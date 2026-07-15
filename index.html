@@ -6,93 +6,558 @@
     <title>Live LPG MQTT Dashboard</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background-color: #eef2f3; margin: 0; padding: 20px; }
-        h1 { color: #333; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; max-width: 1000px; margin: 20px auto; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: all 0.3s ease; }
-        .status-badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; margin-top: 10px; }
-        .normal { background-color: #d4edda; color: #155724; }
-        .warn { background-color: #fff3cd; color: #856404; animation: pulse 2s infinite; }
-        .critical { background-color: #f8d7da; color: #721c24; border: 2px solid #dc3545; animation: blink 1s linear infinite; }
-        .btn-reset { padding: 15px 40px; font-size: 18px; font-weight: bold; background-color: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3); }
-        .btn-reset:hover { background-color: #c82333; }
-        @keyframes blink { 50% { opacity: 0.6; background-color: #ffb3b3; } }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+        :root {
+            color-scheme: light;
+            --bg: #f4f6f8;
+            --panel: #ffffff;
+            --ink: #18212f;
+            --muted: #647086;
+            --line: #d9e0e8;
+            --normal: #147a4d;
+            --normal-bg: #e7f6ee;
+            --warn: #946200;
+            --warn-bg: #fff3c4;
+            --critical: #b42318;
+            --critical-bg: #ffe5e1;
+            --offline: #596579;
+            --offline-bg: #e8edf3;
+            --accent: #1d5f8f;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: "Segoe UI", Roboto, Arial, sans-serif;
+        }
+
+        main {
+            width: min(1180px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 28px 0 40px;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(1.8rem, 3vw, 2.7rem);
+            line-height: 1.05;
+            letter-spacing: 0;
+        }
+
+        .subtitle {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 0.98rem;
+        }
+
+        .connection {
+            min-width: 240px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            padding: 12px 14px;
+            box-shadow: 0 8px 24px rgba(24, 33, 47, 0.06);
+        }
+
+        .connection-label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.76rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        #connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+            font-weight: 700;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--offline);
+        }
+
+        body.connected .dot {
+            background: var(--normal);
+            box-shadow: 0 0 0 4px rgba(20, 122, 77, 0.12);
+        }
+
+        body.disconnected .dot {
+            background: var(--critical);
+            box-shadow: 0 0 0 4px rgba(180, 35, 24, 0.12);
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin: 18px 0 22px;
+        }
+
+        .metric {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            padding: 16px;
+        }
+
+        .metric span {
+            display: block;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .metric strong {
+            display: block;
+            margin-top: 6px;
+            font-size: 1.8rem;
+        }
+
+        .system-state {
+            border-left: 5px solid var(--offline);
+            border-radius: 8px;
+            background: var(--panel);
+            padding: 16px 18px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 24px rgba(24, 33, 47, 0.06);
+        }
+
+        .system-state.normal {
+            border-color: var(--normal);
+        }
+
+        .system-state.warn {
+            border-color: var(--warn);
+        }
+
+        .system-state.critical {
+            border-color: var(--critical);
+        }
+
+        .system-state h2 {
+            margin: 0;
+            font-size: 1.05rem;
+        }
+
+        .system-state p {
+            margin: 6px 0 0;
+            color: var(--muted);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            padding: 18px;
+            box-shadow: 0 8px 24px rgba(24, 33, 47, 0.06);
+            transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px rgba(24, 33, 47, 0.09);
+        }
+
+        .card.critical {
+            border-color: rgba(180, 35, 24, 0.55);
+        }
+
+        .card.warn {
+            border-color: rgba(148, 98, 0, 0.55);
+        }
+
+        .node-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .node-title {
+            margin: 0;
+            font-size: 1.08rem;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 28px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .status-badge.normal {
+            background: var(--normal-bg);
+            color: var(--normal);
+        }
+
+        .status-badge.warn {
+            background: var(--warn-bg);
+            color: var(--warn);
+        }
+
+        .status-badge.critical {
+            background: var(--critical-bg);
+            color: var(--critical);
+            animation: blink 1s linear infinite;
+        }
+
+        .status-badge.offline {
+            background: var(--offline-bg);
+            color: var(--offline);
+        }
+
+        .ppm {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-top: 18px;
+        }
+
+        .ppm-val {
+            font-size: 2.65rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .ppm-unit {
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        .meter {
+            height: 10px;
+            margin-top: 16px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: #e7ebf0;
+        }
+
+        .meter-fill {
+            width: 0%;
+            height: 100%;
+            border-radius: inherit;
+            background: var(--normal);
+            transition: width 220ms ease, background-color 220ms ease;
+        }
+
+        .card.warn .meter-fill {
+            background: var(--warn);
+        }
+
+        .card.critical .meter-fill {
+            background: var(--critical);
+        }
+
+        .details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 16px;
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .details strong {
+            display: block;
+            color: var(--ink);
+            margin-top: 3px;
+        }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-top: 22px;
+        }
+
+        .btn-reset {
+            min-height: 46px;
+            border: none;
+            border-radius: 8px;
+            padding: 0 20px;
+            background: var(--critical);
+            color: #ffffff;
+            cursor: pointer;
+            font-size: 0.98rem;
+            font-weight: 800;
+            box-shadow: 0 10px 22px rgba(180, 35, 24, 0.22);
+        }
+
+        .btn-reset:hover {
+            background: #9f1f16;
+        }
+
+        .btn-reset:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+            box-shadow: none;
+        }
+
+        .last-update {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0.72;
+            }
+        }
+
+        @media (max-width: 760px) {
+            main {
+                width: min(100% - 24px, 1180px);
+                padding-top: 18px;
+            }
+
+            .topbar,
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .connection {
+                min-width: 0;
+            }
+
+            .summary {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .ppm-val {
+                font-size: 2.25rem;
+            }
+        }
     </style>
 </head>
-<body>
+<body class="disconnected">
+    <main>
+        <header class="topbar">
+            <div>
+                <h1>LPG Gas Leakage Monitoring Terminal</h1>
+                <p class="subtitle">Live MQTT view for four ESP-NOW sensor nodes.</p>
+            </div>
+            <section class="connection" aria-label="Broker connection">
+                <span class="connection-label">Broker</span>
+                <div id="connection-status"><span class="dot"></span><span>Connecting to EMQX</span></div>
+            </section>
+        </header>
 
-    <h1>LPG Gas Leakage Monitoring Terminal</h1>
-    <div id="connection-status" style="color: gray; font-style: italic;">Connecting to EMQX Broker...</div>
+        <section class="summary" aria-label="System summary">
+            <div class="metric"><span>Online nodes</span><strong id="online-count">0/4</strong></div>
+            <div class="metric"><span>Warnings</span><strong id="warning-count">0</strong></div>
+            <div class="metric"><span>Critical</span><strong id="critical-count">0</strong></div>
+            <div class="metric"><span>Threshold</span><strong id="threshold-value">2000</strong></div>
+        </section>
 
-    <div class="grid" id="node-container">
-        <div class="card" id="node1"><h3>Node 1</h3><p>PPM: <b class="ppm-val">-</b></p><span class="status-badge normal">Offline</span></div>
-        <div class="card" id="node2"><h3>Node 2</h3><p>PPM: <b class="ppm-val">-</b></p><span class="status-badge normal">Offline</span></div>
-        <div class="card" id="node3"><h3>Node 3</h3><p>PPM: <b class="ppm-val">-</b></p><span class="status-badge normal">Offline</span></div>
-        <div class="card" id="node4"><h3>Node 4</h3><p>PPM: <b class="ppm-val">-</b></p><span class="status-badge normal">Offline</span></div>
-    </div>
+        <section class="system-state" id="system-state">
+            <h2 id="system-title">Waiting for sensor data</h2>
+            <p id="system-copy">Nodes will appear online after the hub receives their first ESP-NOW report.</p>
+        </section>
 
-    <br>
-    <button class="btn-reset" onclick="sendRemoteReset()">Remote Reset System Alarm</button>
+        <section class="grid" id="node-container" aria-label="Sensor nodes">
+            <article class="card offline" id="node1" data-node="1">
+                <div class="node-head"><h3 class="node-title">Node 1</h3><span class="status-badge offline">Offline</span></div>
+                <div class="ppm"><span class="ppm-val">--</span><span class="ppm-unit">ppm</span></div>
+                <div class="meter"><div class="meter-fill"></div></div>
+                <div class="details"><span>Digital leak<strong class="leak-val">No data</strong></span><span>Last seen<strong class="age-val">Never</strong></span></div>
+            </article>
+            <article class="card offline" id="node2" data-node="2">
+                <div class="node-head"><h3 class="node-title">Node 2</h3><span class="status-badge offline">Offline</span></div>
+                <div class="ppm"><span class="ppm-val">--</span><span class="ppm-unit">ppm</span></div>
+                <div class="meter"><div class="meter-fill"></div></div>
+                <div class="details"><span>Digital leak<strong class="leak-val">No data</strong></span><span>Last seen<strong class="age-val">Never</strong></span></div>
+            </article>
+            <article class="card offline" id="node3" data-node="3">
+                <div class="node-head"><h3 class="node-title">Node 3</h3><span class="status-badge offline">Offline</span></div>
+                <div class="ppm"><span class="ppm-val">--</span><span class="ppm-unit">ppm</span></div>
+                <div class="meter"><div class="meter-fill"></div></div>
+                <div class="details"><span>Digital leak<strong class="leak-val">No data</strong></span><span>Last seen<strong class="age-val">Never</strong></span></div>
+            </article>
+            <article class="card offline" id="node4" data-node="4">
+                <div class="node-head"><h3 class="node-title">Node 4</h3><span class="status-badge offline">Offline</span></div>
+                <div class="ppm"><span class="ppm-val">--</span><span class="ppm-unit">ppm</span></div>
+                <div class="meter"><div class="meter-fill"></div></div>
+                <div class="details"><span>Digital leak<strong class="leak-val">No data</strong></span><span>Last seen<strong class="age-val">Never</strong></span></div>
+            </article>
+        </section>
+
+        <section class="actions">
+            <button class="btn-reset" id="reset-button" type="button" disabled>Remote Reset System Alarm</button>
+            <span class="last-update" id="last-update">No MQTT payload received yet.</span>
+        </section>
+    </main>
 
     <script>
-        // Use EMQX public secure WebSockets port 8084
-        const broker = 'wss://broker.emqx.io:8084/mqtt';
-        const client = mqtt.connect(broker, { clientId: 'web_lpg_dash_' + Math.random().toString(16).substr(2, 8) });
+        const broker = "wss://broker.emqx.io:8084/mqtt";
+        const topicStatus = "lpg/system/status";
+        const topicCmd = "lpg/system/cmd";
+        const nodeCount = 4;
+        const defaultThreshold = 2000;
 
-        const topicStatus = 'lpg/system/status';
-        const topicCmd = 'lpg/system/cmd';
+        const client = mqtt.connect(broker, {
+            clientId: "web_lpg_dash_" + Math.random().toString(16).slice(2, 10),
+            clean: true,
+            reconnectPeriod: 3000,
+            connectTimeout: 10000
+        });
 
-        client.on('connect', () => {
-            document.getElementById('connection-status').innerText = "Connected to EMQX Broker (Live Syncing)";
-            document.getElementById('connection-status').style.color = "green";
+        const resetButton = document.getElementById("reset-button");
+        const connectionStatus = document.getElementById("connection-status");
+        const lastUpdate = document.getElementById("last-update");
+        const systemState = document.getElementById("system-state");
+        const systemTitle = document.getElementById("system-title");
+        const systemCopy = document.getElementById("system-copy");
+
+        let latestThreshold = defaultThreshold;
+
+        client.on("connect", () => {
+            document.body.classList.remove("disconnected");
+            document.body.classList.add("connected");
+            connectionStatus.innerHTML = '<span class="dot"></span><span>Connected to EMQX</span>';
+            resetButton.disabled = false;
             client.subscribe(topicStatus);
         });
 
-        client.on('message', (topic, message) => {
-            if (topic === topicStatus) {
-                try {
-                    const data = JSON.parse(message.toString());
-                    updateDashboard(data.nodes);
-                } catch (e) {
-                    console.error("Error parsing payload", e);
-                }
+        client.on("message", (topic, message) => {
+            if (topic !== topicStatus) return;
+
+            try {
+                const data = JSON.parse(message.toString());
+                updateDashboard(data);
+            } catch (error) {
+                console.error("Error parsing payload", error);
             }
         });
 
-        function updateDashboard(nodes) {
-            nodes.forEach(node => {
-                const card = document.getElementById(`node${node.id}`);
-                if (!card) return;
-
-                const ppmText = card.querySelector('.ppm-val');
-                const badge = card.querySelector('.status-badge');
-
-                ppmText.innerText = node.ppm;
-
-                // UI adjustments matching states
-                if (node.crit) {
-                    badge.innerText = "CRITICAL LEAK!";
-                    badge.className = "status-badge critical";
-                } else if (node.warn) {
-                    badge.innerText = "Warning (Elevated)";
-                    badge.className = "status-badge warn";
-                } else {
-                    badge.innerText = "Normal Operational";
-                    badge.className = "status-badge normal";
-                }
-            });
-        }
-
-        function sendRemoteReset() {
-            client.publish(topicCmd, "RESET");
-            alert("Reset command dispatched to Main Hub via EMQX Broker.");
-        }
-        
-        client.on('close', () => {
-            document.getElementById('connection-status').innerText = "Disconnected from Broker. Reconnecting...";
-            document.getElementById('connection-status').style.color = "red";
+        client.on("close", () => {
+            document.body.classList.remove("connected");
+            document.body.classList.add("disconnected");
+            connectionStatus.innerHTML = '<span class="dot"></span><span>Reconnecting to EMQX</span>';
+            resetButton.disabled = true;
         });
+
+        client.on("error", (error) => {
+            console.error("MQTT error", error);
+        });
+
+        resetButton.addEventListener("click", () => {
+            if (!client.connected) return;
+            client.publish(topicCmd, "RESET");
+            lastUpdate.textContent = "Reset command sent. Waiting for hub confirmation...";
+        });
+
+        function updateDashboard(data) {
+            const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+            latestThreshold = Number(data.threshold) || latestThreshold;
+
+            let online = 0;
+            let warnings = 0;
+            let critical = 0;
+
+            nodes.forEach((node) => {
+                const state = getNodeState(node);
+                if (state.online) online += 1;
+                if (state.level === "warn") warnings += 1;
+                if (state.level === "critical") critical += 1;
+                updateNodeCard(node, state);
+            });
+
+            document.getElementById("online-count").textContent = `${online}/${nodeCount}`;
+            document.getElementById("warning-count").textContent = warnings;
+            document.getElementById("critical-count").textContent = critical;
+            document.getElementById("threshold-value").textContent = latestThreshold;
+            lastUpdate.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+            updateSystemState({ online, warnings, critical, latched: Boolean(data.latched) });
+        }
+
+        function getNodeState(node) {
+            const online = node.online !== false;
+            if (!online) return { online, level: "offline", label: "Offline" };
+            if (node.crit) return { online, level: "critical", label: "Critical" };
+            if (node.warn) return { online, level: "warn", label: "Warning" };
+            return { online, level: "normal", label: "Normal" };
+        }
+
+        function updateNodeCard(node, state) {
+            const card = document.getElementById(`node${node.id}`);
+            if (!card) return;
+
+            const ppm = Number(node.ppm) || 0;
+            const badge = card.querySelector(".status-badge");
+            const meterFill = card.querySelector(".meter-fill");
+
+            card.className = `card ${state.level}`;
+            badge.className = `status-badge ${state.level}`;
+            badge.textContent = state.label;
+            card.querySelector(".ppm-val").textContent = state.online ? ppm : "--";
+            card.querySelector(".leak-val").textContent = state.online ? (node.leak ? "Detected" : "Clear") : "No data";
+            card.querySelector(".age-val").textContent = state.online ? formatAge(node.age) : "Offline";
+
+            const percentage = Math.min(100, Math.round((ppm / latestThreshold) * 100));
+            meterFill.style.width = state.online ? `${percentage}%` : "0%";
+        }
+
+        function updateSystemState({ online, warnings, critical, latched }) {
+            systemState.className = "system-state";
+
+            if (critical > 0 || latched) {
+                systemState.classList.add("critical");
+                systemTitle.textContent = "Critical gas alarm latched";
+                systemCopy.textContent = "Use remote reset only after the area is safe and readings have returned below the threshold.";
+            } else if (warnings > 0) {
+                systemState.classList.add("warn");
+                systemTitle.textContent = "Elevated LPG level detected";
+                systemCopy.textContent = "One or more nodes are above the warning range. Inspect the area and keep monitoring.";
+            } else if (online > 0) {
+                systemState.classList.add("normal");
+                systemTitle.textContent = "System normal";
+                systemCopy.textContent = "Online nodes are reporting below the warning threshold.";
+            } else {
+                systemTitle.textContent = "Waiting for sensor data";
+                systemCopy.textContent = "Nodes will appear online after the hub receives their first ESP-NOW report.";
+            }
+        }
+
+        function formatAge(age) {
+            const seconds = Number(age);
+            if (!Number.isFinite(seconds) || seconds <= 0) return "Just now";
+            if (seconds < 60) return `${seconds}s ago`;
+            return `${Math.floor(seconds / 60)}m ago`;
+        }
     </script>
 </body>
 </html>
